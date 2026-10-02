@@ -4,11 +4,20 @@ Blackbox lets you search, inspect, and export the current Pi session's active br
 
 ## Install
 
-From a checkout, run `pi install /path/to/pi-session-blackbox` (the directory containing `package.json`), then `/reload` or start a new Pi session. Local packages are loaded in place; Pi does not copy them or install their dependencies. For a one-off run, use `pi -e /path/to/pi-session-blackbox`.
+By default, install from npm:
 
-Once published to npm, install with `pi install npm:pi-session-blackbox`. Pi supplies the extension runtime and terminal UI dependencies; you don't need a separate `npm install`. Pi must run on Node.js 22.19.0 or newer.
+```sh
+pi install npm:pi-session-blackbox
+```
 
-Pi discovers `~/.pi/agent/extensions/blackbox/index.ts` automatically. Don't install that checkout as a package too, or `/blackbox` may load twice. Run `/reload` after changes.
+Then run `/reload` or start a new Pi session. Pi supplies the extension runtime and terminal UI dependencies; you don't need a separate `npm install`. Pi must run on Node.js 22.19.0 or newer.
+
+If you don't want to install from npm, or you're debugging or developing Blackbox, use one of these local options:
+
+- **Install a checkout:** Run `pi install /path/to/pi-session-blackbox` (the directory containing `package.json`). Pi loads local packages in place; it does not copy them or install their dependencies. For a one-off debugging run, use `pi -e /path/to/pi-session-blackbox` instead.
+- **Develop in Pi's extensions directory:** Pi discovers `~/.pi/agent/extensions/blackbox/index.ts` automatically; no `pi install` is needed. Don't also install that checkout as a package, or `/blackbox` may load twice.
+
+Run `/reload` after local changes.
 
 The only command is `/blackbox`; no compatibility alias is registered.
 
