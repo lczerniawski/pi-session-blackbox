@@ -1,10 +1,10 @@
 import { stripVTControlCharacters } from "node:util";
 
-// Persisted data ID: retain it so decisions in existing sessions survive the Blackbox rename.
-export const MARKER_TYPE = "session-flight-recorder.marker.v1";
+// Persisted data ID for explicit Blackbox decision markers.
+export const MARKER_TYPE = "session-blackbox.marker.v1";
 export const KINDS = ["prompt", "assistant", "decision", "edit", "command", "test", "error", "tool", "model", "compaction", "branch"] as const;
 export type RecordKind = (typeof KINDS)[number];
-export interface FlightRecord {
+export interface BlackboxRecord {
   id: string;
   entryId: string;
   timestamp: string;
@@ -54,17 +54,19 @@ export function isTestCommand(command: string): boolean {
 function toolBase(name: string): string { return name.split(/[./:]/).pop() || name; }
 
 /** Build only from the supplied active branch; no duplicated persistent log. */
-export function buildTimeline(entries: readonly unknown[]): FlightRecord[] {
-  const records: FlightRecord[] = [];
+export function buildTimeline(entries: readonly unknown[]): BlackboxRecord[] {
+  const records: BlackboxRecord[] = [];
   const calls = new Map<string, { name: string; args: ObjectValue }>();
   for (const raw of entries) {
     const entry = object(raw);
     const id = string(entry.id);
     const timestamp = string(entry.timestamp);
     const add = (kind: RecordKind, title: string, detail = title, failed = false,
-      presentation: Pick<FlightRecord, "command" | "sourcePath"> = {}) => {
-      records.push({ id: `${id}:${records.length}`, entryId: id, timestamp, kind,
-        title: clipped(oneLine(title), 240), detail: clipped(detail), failed, ...presentation });
+      presentation: Pick<BlackboxRecord, "command" | "sourcePath"> = {}) => {
+      records.push({
+        id: `${id}:${records.length}`, entryId: id, timestamp, kind,
+        title: clipped(oneLine(title), 240), detail: clipped(detail), failed, ...presentation
+      });
     };
     const addCommand = (command: string, output: string, status: string, failed: boolean, direct = false) => {
       const safeCommand = cleanText(command);
@@ -142,7 +144,7 @@ export function parseQuery(input: string): TimelineQuery {
   query.text = words.join(" ");
   return query;
 }
-export function filterTimeline(records: readonly FlightRecord[], query: TimelineQuery): FlightRecord[] {
+export function filterTimeline(records: readonly BlackboxRecord[], query: TimelineQuery): BlackboxRecord[] {
   const words = (query.text || "").toLowerCase().split(/\s+/).filter(Boolean);
   return records.filter((record) => {
     if (query.kind && record.kind !== query.kind) return false;
@@ -160,7 +162,7 @@ function codeBlock(text: string): string {
   const fence = "`".repeat(longest + 1);
   return `${fence}text\n${text}\n${fence}`;
 }
-export function exportMarkdown(records: readonly FlightRecord[], meta: ExportMetadata): string {
+export function exportMarkdown(records: readonly BlackboxRecord[], meta: ExportMetadata): string {
   const lines = ["# Blackbox — Pi session history", "", codeBlock(cleanText([
     `Session: ${meta.sessionId}`, `Name: ${meta.name || "(unnamed)"}`, `Working directory: ${meta.cwd}`,
     `Exported: ${meta.exportedAt}`, `Records: ${records.length}`,

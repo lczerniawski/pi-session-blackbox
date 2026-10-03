@@ -67,7 +67,7 @@ The same query works in the browser's Search field and after `/blackbox text`, f
 /blackbox help
 ```
 
-- **Browse:** newest records first; type to search, arrows to select, Enter for details, Escape to go back or close.
+- **Browse:** newest records first; type to search, arrows or mouse wheel/trackpad (fullscreen mode) to select and scroll through actions, Enter for details, Escape to go back or close.
 - **Row colors:** category labels use the active Pi theme (edits use the added-diff color, tests the syntax-type color, decisions the keyword color). Timestamps are muted. Failures override category colors with the error color and a bold `!`; selection uses bold text, a background highlight, and the `→` arrow without hiding category colors. Detail headers use the same category color. Colors are display-only and never added to exports.
 - **Details:** Enter opens formatted details in a focused overlay. Scroll with the mouse wheel/trackpad in fullscreen mode, arrows, or Page Up/Down. Home/End and Ctrl+Home/Ctrl+End jump to the start/end.
 - **Export matches:** Ctrl+X in the browser opens the save-location chooser for the current filtered snapshot. The default folder is the first choice; you can also enter another folder or a filename. Export still requires confirmation.
@@ -89,9 +89,9 @@ While a record is open:
 | Ctrl+L | Choose the detail/output language from a searchable picker |
 | Escape | Return to the filtered list; press again to close |
 
-The timeline fills the viewport, including empty rows for short records or empty results, and hides the transcript until you close it. Its footer stays at the bottom. Scrolling and jump keys move within the record, not the transcript behind it. Wheel scrolling stops at the record's bounds. When you return to the list, Home/End work in the Search field as before. Arrow/page and fullscreen top/bottom actions follow Pi's configured keybindings.
+The timeline fills the viewport and hides the transcript until you close it. The record list and language picker expand to use the available height and adjust when you resize the terminal. Short records or empty results still fill the screen with blank rows, and the footer stays at the bottom. Scrolling and jump keys move within the record, not the transcript behind it. In the action list, wheel/trackpad scrolling moves the selection through the filtered records; Enter opens the selected action. Wheel scrolling stops at the list or record's bounds, including empty results, without scrolling the transcript behind the modal. When you return to the list, Home/End work in the Search field as before. Arrow/page and fullscreen top/bottom actions follow Pi's configured keybindings.
 
-Pi's fullscreen mode supplies wheel events to extensions. In regular mode, the terminal handles mouse scrolling and scrollback; use the keyboard to scroll records. For wheel scrolling, start Pi with `pi --tui-mode fullscreen`. Blackbox does not enable mouse capture or change terminal modes.
+Pi's fullscreen mode supplies wheel events to extensions. In regular mode, the terminal handles mouse scrolling and scrollback; use the keyboard to navigate the action list and scroll records. For wheel scrolling, start Pi with `pi --tui-mode fullscreen`. Blackbox does not enable mouse capture or change terminal modes.
 
 ## Formatted details
 
@@ -146,7 +146,7 @@ The command reconstructs a timeline from `ctx.sessionManager.getBranch()` on dem
 
 Tool results are matched to assistant tool calls by call ID, not by arrival order. The browser is a snapshot: reopening it refreshes the view. Commands wait for active agent work to finish before taking that snapshot, except for adding an explicit decision marker.
 
-Saved decision markers retain the persisted `session-flight-recorder.marker.v1` data ID, so decisions recorded before the Blackbox rename still appear. This is session-data continuity, not a command alias.
+Decision markers use the persisted `session-blackbox.marker.v1` data ID. Markers saved under earlier IDs are not included in Blackbox; existing session data is not modified.
 
 ## Exports and privacy
 
@@ -168,7 +168,7 @@ You can skip the chooser by specifying the destination directly (confirmation st
 - Export requires confirmation in TUI or RPC mode. It is disabled without dialog-capable UI. RPC clients receive standard selection, input, and confirmation requests; no native OS file dialog is required.
 - Relative custom paths resolve against Pi's working directory; `~/` and quoted paths with spaces are supported. Custom folders and a custom file's parent directory must already exist; only the default folder is created automatically.
 - Files are created with permissions `0600`. Newly created default directories use `0700`. Existing files and symlinks are never overwritten.
-- Exports created before the rename remain in their previous locations (including `~/.pi/agent/exports/flight-recorder/`). No existing exports are moved, deleted, or rewritten.
+- Existing exports remain in their original locations. No existing exports are moved, deleted, or rewritten.
 - Thinking, signatures, image payloads, and file-write/edit argument payloads are omitted. Prompts, visible assistant text, read results, and command output can contain secrets. Review exports before sharing; Blackbox does not automatically redact them.
 - Detail excerpts are capped at 6,000 characters. Search operates on those excerpts, not on omitted or truncated raw content. Terminal control sequences are removed before display/export.
 - This is a raw-history view. Model-context edits/redactions do not erase the original persisted content or hide it here, consistent with Pi's session history semantics.

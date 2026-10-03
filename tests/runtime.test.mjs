@@ -31,7 +31,7 @@ const entries = [
 function context(overrides = {}) {
   const notifications = [];
   return { notifications, cwd: "/project", mode: "tui", hasUI: true, waitForIdle: async () => {},
-    sessionManager: { getBranch: () => entries, getSessionId: () => "test-session", getSessionName: () => "Test flight" },
+    sessionManager: { getBranch: () => entries, getSessionId: () => "test-session", getSessionName: () => "Test Blackbox session" },
     ui: { notify: (text, type) => notifications.push({ text, type }), confirm: async () => false,
       select: async (_title, options) => options[0], input: async () => undefined }, ...overrides };
 }
@@ -50,7 +50,7 @@ async function inspectDetails(history, check) {
   assert.deepEqual(ctx.notifications, []);
 }
 
-test("Pi loads Blackbox only, preserves saved markers, and adds no extra tools/hooks", async () => {
+test("Pi loads Blackbox only, registers Blackbox markers, and adds no extra tools/hooks", async () => {
   assert.deepEqual([...extension.commands.keys()], ["blackbox"]);
   assert.equal(extension.commands.has("timeline"), false, "No compatibility alias");
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -64,7 +64,7 @@ test("Pi loads Blackbox only, preserves saved markers, and adds no extra tools/h
   assert.equal(manifest.peerDependencies["@earendil-works/pi-tui"], "*");
   assert.equal(manifest.dependencies, undefined);
   assert.equal(manifest.private, undefined);
-  assert.deepEqual([...extension.entryRenderers.keys()], ["session-flight-recorder.marker.v1"]);
+  assert.deepEqual([...extension.entryRenderers.keys()], ["session-blackbox.marker.v1"]);
   assert.equal(extension.tools.size, 0);
   assert.equal(extension.handlers.size, 0);
 });
@@ -92,7 +92,7 @@ test("Blackbox command exposes filter examples, help, and composable argument su
   await handler("help", ctx);
   assert.match(ctx.notifications[0].text, /Usage: \/blackbox \[search words\]/);
   assert.match(ctx.notifications[0].text, /\/blackbox kind:test status:failed/);
-  assert.doesNotMatch(ctx.notifications[0].text, /\/timeline|[Ff]light recorder/);
+  assert.doesNotMatch(ctx.notifications[0].text, /\/timeline/);
   assert.match(ctx.notifications[0].text, /exports\/blackbox/);
   assert.match(ctx.notifications[0].text, /same query inside/);
   assert.match(ctx.notifications[0].text, /default folder first/);
@@ -110,7 +110,7 @@ test("startup filters populate the browser before any typing", async () => {
     assert.match(rendered, /1\/2 records/);
     assert.match(rendered, /Blackbox · 1\/2 records/);
     assert.match(rendered, /Start filtered: \/blackbox kind:test status:failed/);
-    assert.doesNotMatch(rendered, /\/timeline|[Ff]light recorder/);
+    assert.doesNotMatch(rendered, /\/timeline/);
     browser.handleInput("\x18");
     assert.deepEqual(result.exportRecords.map((record) => [record.kind, record.failed]), [["test", true]]);
     return undefined;
@@ -132,7 +132,7 @@ test("marks explicit decisions without sending model messages", async () => {
   loaded.runtime.appendEntry = (type, data) => appended.push({ type, data });
   const ctx = context();
   await handler("mark Use SQLite because data is local", ctx);
-  assert.deepEqual(appended, [{ type: "session-flight-recorder.marker.v1", data: { text: "Use SQLite because data is local" } }]);
+  assert.deepEqual(appended, [{ type: "session-blackbox.marker.v1", data: { text: "Use SQLite because data is local" } }]);
   await handler("mark", ctx);
   assert.equal(appended.length, 1);
   assert.equal(ctx.notifications.at(-1).type, "warning");
@@ -233,13 +233,60 @@ test("details support wheel/trackpad, page keys, Home/End, and bounded scrolling
     tui.terminal.rows = 200;
     assert.equal(position().top, 1);
     assert.deepEqual(wheel(10000), { handled: true, render: false });
-    browser.handleInput("\x1b"); // Back to search: don't hijack list/terminal mouse events
+    browser.handleInput("\x1b"); // Back to search: consume wheel at the single-record list boundary.
     browser.render(120);
-    assert.equal(wheel(3), undefined);
+    assert.deepEqual(wheel(3), { handled: true, render: false });
     for (const char of "kind:command") browser.handleInput(char);
     browser.handleInput("\x1b[H");
     assert.match(stripVTControlCharacters(browser.render(120).join("\n")), /kind:command/);
   });
+});
+
+test("action list touchpad scrolling honors deltas, bounds, filters, resize, and Enter selection", async () => {
+  const history = Array.from({ length: 100 }, (_, i) => ({ type: "message", id: `action-${i}`, timestamp: stamp,
+    message: { role: "user", content: `Scroll action ${i}` } }));
+  const ctx = context({ sessionManager: { getBranch: () => history } });
+  ctx.ui.custom = async (factory) => {
+    let renders = 0;
+    const tui = { mode: "fullscreen", terminal: { rows: 24 }, requestRender: () => renders++ };
+    const browser = factory(tui, themes.theme, new KeybindingsManager(), () => {});
+    const frame = () => browser.render(120).map(stripVTControlCharacters).join("\n");
+    const selected = () => Number(/→ .*Scroll action (\d+)/.exec(frame())[1]);
+    const wheel = (wheelDelta, type = "wheel") => browser.handleMouse({ type, button: "none", x: 10, y: 5,
+      screenX: 10, screenY: 5, width: 120, height: tui.terminal.rows, shift: false, alt: false, ctrl: false, wheelDelta });
+    assert.equal(selected(), 99);
+    assert.deepEqual(wheel(3), { handled: true, render: true });
+    assert.equal(selected(), 96, "accelerated delta moves three records, not one");
+    assert.equal(renders, 1);
+    wheel(-2);
+    assert.equal(selected(), 98);
+    for (const delta of [undefined, 0, NaN, Infinity]) assert.equal(wheel(delta), undefined);
+    for (const type of ["press", "click", "drag", "move", "release"]) assert.equal(wheel(1, type), undefined);
+    wheel(10000);
+    assert.equal(selected(), 0);
+    assert.deepEqual(wheel(10000), { handled: true, render: false });
+    tui.terminal.rows = 12;
+    assert.equal(selected(), 0);
+    wheel(-10000);
+    assert.equal(selected(), 99);
+    assert.deepEqual(wheel(-10000), { handled: true, render: false });
+    wheel(30);
+    assert.equal(selected(), 69);
+    browser.handleInput("\r");
+    assert.match(frame(), /entry action-69/, "wheel selects the record Enter will open");
+    browser.handleInput("\x1b");
+    browser.handleInput("\x1b[200~Scroll action 5\x1b[201~");
+    assert.match(frame(), /19\/100 records/);
+    wheel(10000);
+    assert.equal(selected(), 5, "scrolling stays within filtered records");
+    browser.handleInput("\x15");
+    browser.handleInput("no-such-action");
+    assert.match(frame(), /No matching records/);
+    assert.deepEqual(wheel(3), { handled: true, render: false });
+    return undefined;
+  };
+  await handler("", ctx);
+  assert.deepEqual(ctx.notifications, []);
 });
 
 test("fullscreen Pi routes wheel and Home/End/Page keys to the focused reader overlay", async () => {
@@ -295,13 +342,60 @@ test("fullscreen Pi routes wheel and Home/End/Page keys to the focused reader ov
       assert.equal(position(), 1);
       assert.equal(ui.viewportTop, transcriptTop);
       send("\x1b"); // back to list
+      ui.renderNow();
+      send("\x1b[<65;20;6M"); // touchpad/wheel down selects the older prompt
+      ui.renderNow();
+      assert.match(ui.getScreenLines().map(stripVTControlCharacters).join("\n"), /→ .*Fix auth/);
+      assert.equal(ui.viewportTop, transcriptTop);
+      send("\r");
+      ui.renderNow();
+      assert.match(ui.getScreenLines().map(stripVTControlCharacters).join("\n"), /entry prompt/);
+      send("\x1b");
       send("\x1b"); // close overlay
       assert.equal(ui.hasOverlay(), false);
       assert.equal(ui.getFocusedComponent(), original);
     } finally { ui.stop(); }
     return undefined;
   };
-  await handler("kind:test", ctx);
+  await handler("", ctx);
+  assert.deepEqual(ctx.notifications, []);
+});
+
+test("timeline and language lists use available rows and preserve selection on resize", async () => {
+  const history = Array.from({ length: 100 }, (_, i) => ({ type: "message", id: `record-${i}`, timestamp: stamp,
+    message: { role: "user", content: `Viewport record ${i}` } }));
+  const ctx = context({ sessionManager: { getBranch: () => history } });
+  ctx.ui.custom = async (factory) => {
+    const tui = { terminal: { rows: 24 }, requestRender() {} };
+    const browser = factory(tui, themes.theme, new KeybindingsManager(), () => {});
+    const frame = () => browser.render(120).map(stripVTControlCharacters);
+    browser.handleInput("\x1b[B");
+    for (const rows of [24, 60, 12, 40]) {
+      tui.terminal.rows = rows;
+      const lines = frame();
+      assert.equal(lines.length, rows);
+      assert.equal(lines.filter((line) => /Viewport record \d+/.test(line) && !line.startsWith("Viewport")).length, rows - 9);
+      assert.match(lines.find((line) => line.startsWith("→ ")), /Viewport record 98/);
+      assert.match(lines.at(-2), /Ctrl\+X export/);
+      assert.match(lines.at(-1), /Start filtered:/);
+    }
+    browser.handleInput("\r");
+    browser.handleInput("\x0c");
+    browser.handleInput("\x1b[B"); // Keep Plain text selected through picker resizes.
+    for (const rows of [24, 60, 12, 40]) {
+      tui.terminal.rows = rows;
+      const lines = frame();
+      assert.equal(lines.length, rows);
+      // Four header rows, choice rows plus one scroll indicator, and three footer rows.
+      assert.equal(lines.slice(4, rows - 4).length, rows - 8);
+      assert.ok(lines.slice(4, rows - 4).every((line) => /^(?:→ |  )\S/.test(line)), "choices must fill the list area");
+      assert.match(lines.find((line) => line.startsWith("→ ")), /Plain text/);
+      assert.match(lines.at(-2), /Commands stay Bash/);
+      assert.match(lines.at(-1), /Enter apply · Esc cancel/);
+    }
+    return undefined;
+  };
+  await handler("", ctx);
   assert.deepEqual(ctx.notifications, []);
 });
 
@@ -360,7 +454,7 @@ test("rows retain category colors, failure emphasis, and selection across theme 
   const colorEntries = [...entries,
     { type: "message", id: "passed", timestamp: stamp, message: { role: "bashExecution", command: "npm test", exitCode: 0, output: "passed" } },
     { type: "message", id: "edit", timestamp: stamp, message: { role: "toolResult", toolName: "write", isError: false, content: [] } },
-    { type: "custom", id: "decision", timestamp: stamp, customType: "session-flight-recorder.marker.v1", data: { text: "Use SQLite" } },
+    { type: "custom", id: "decision", timestamp: stamp, customType: "session-blackbox.marker.v1", data: { text: "Use SQLite" } },
   ];
   const ctx = context({ sessionManager: { getBranch: () => colorEntries } });
   ctx.ui.custom = async (factory) => {
@@ -634,7 +728,7 @@ test("typing kind:test supports shifted colon across terminal keyboard protocols
 });
 
 test("exports require confirmation; approved paths are written; overwrite is reported", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pi-flight-runtime-"));
+  const dir = await mkdtemp(join(tmpdir(), "pi-blackbox-runtime-"));
   try {
     const path = join(dir, "timeline.md");
     const ctx = context();

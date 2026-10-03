@@ -1,7 +1,7 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { getMarkdownTheme, highlightCode } from "@earendil-works/pi-coding-agent";
 import { Markdown, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import type { FlightRecord } from "./recorder.ts";
+import type { BlackboxRecord } from "./timeline.ts";
 import { interpreterLanguage, languageCatalog, languageFromPath, shebangLanguage } from "./languages.ts";
 
 function shellLines(command: string): string[] {
@@ -151,9 +151,9 @@ function panel(lines: string[], width: number, theme: Theme): string[] {
   const innerWidth = width - 4;
   const border = (text: string) => theme.fg("mdCodeBlockBorder", text);
   return [border(`┌${"─".repeat(width - 2)}┐`),
-    ...wrapTextWithAnsi(text, innerWidth).map((line) =>
-      `${border("│ ")}${line}${" ".repeat(Math.max(0, innerWidth - visibleWidth(line)))}${border(" │")}`),
-    border(`└${"─".repeat(width - 2)}┘`)];
+  ...wrapTextWithAnsi(text, innerWidth).map((line) =>
+    `${border("│ ")}${line}${" ".repeat(Math.max(0, innerWidth - visibleWidth(line)))}${border(" │")}`),
+  border(`└${"─".repeat(width - 2)}┘`)];
 }
 
 function markdownLines(text: string, width: number): string[] {
@@ -172,7 +172,7 @@ function contentLines(text: string, width: number, theme: Theme, language?: stri
 }
 
 /** Display-only formatting: stored excerpts, search, and exports remain literal. */
-export function renderRecordDetails(record: FlightRecord, width: number, theme: Theme, languageOverride?: string): string[] {
+export function renderRecordDetails(record: BlackboxRecord, width: number, theme: Theme, languageOverride?: string): string[] {
   languageCatalog(); // Register all shipped grammars before file or Markdown highlighting.
   const w = Math.max(1, width);
   const heading = (text: string, color: ThemeColor = "accent") =>
@@ -183,15 +183,15 @@ export function renderRecordDetails(record: FlightRecord, width: number, theme: 
     const output = record.detail.slice(record.command.outputStart);
     const language = outputLanguage(output);
     lines = [...heading(`Command · bash · ${record.command.status}`, record.failed ? "error" : "accent"),
-      ...panel(shellLines(command), w, theme), "", ...heading(languageOverride ? `Output · ${languageOverride}` : "Output", record.failed ? "error" : "accent"),
-      ...(output ? contentLines(output, w, theme, languageOverride ?? language, command)
-        : [theme.fg("muted", record.command.outputStart >= record.detail.length && record.detail.includes("[…truncated;")
-          ? "Output omitted by excerpt limit." : "(no output)")])];
+    ...panel(shellLines(command), w, theme), "", ...heading(languageOverride ? `Output · ${languageOverride}` : "Output", record.failed ? "error" : "accent"),
+    ...(output ? contentLines(output, w, theme, languageOverride ?? language, command)
+      : [theme.fg("muted", record.command.outputStart >= record.detail.length && record.detail.includes("[…truncated;")
+        ? "Output omitted by excerpt limit." : "(no output)")])];
   } else if (languageOverride) {
     const prefix = `${record.title}\n\n`;
     const output = record.detail.startsWith(prefix) ? record.detail.slice(prefix.length) : record.detail;
     lines = [...heading(`${record.title} · ${languageOverride}`, record.failed ? "error" : "accent"),
-      ...contentLines(output, w, theme, languageOverride)];
+    ...contentLines(output, w, theme, languageOverride)];
   } else if (["prompt", "assistant", "decision", "compaction", "branch"].includes(record.kind)) {
     lines = markdownLines(record.detail, w);
   } else {
@@ -199,8 +199,8 @@ export function renderRecordDetails(record: FlightRecord, width: number, theme: 
     const output = record.detail.startsWith(prefix) ? record.detail.slice(prefix.length) : record.detail;
     const language = (record.sourcePath ? languageFromPath(record.sourcePath) : undefined) ?? outputLanguage(output);
     lines = [...heading(record.title, record.failed ? "error" : "accent"),
-      ...(record.sourcePath ? [...heading(`File · ${record.sourcePath}`, "muted"), ""] : [""]),
-      ...contentLines(output, w, theme, language)];
+    ...(record.sourcePath ? [...heading(`File · ${record.sourcePath}`, "muted"), ""] : [""]),
+    ...contentLines(output, w, theme, language)];
   }
   return lines.map((line) => truncateToWidth(line, w));
 }

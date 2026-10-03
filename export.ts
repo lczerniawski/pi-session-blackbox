@@ -1,7 +1,7 @@
 import { mkdir, open, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { exportMarkdown, type ExportMetadata, type FlightRecord } from "./recorder.ts";
+import { exportMarkdown, type ExportMetadata, type BlackboxRecord } from "./timeline.ts";
 
 export function resolveExportPath(path: string, cwd: string): string {
   const unquoted = path.replace(/^(["'])(.*)\1$/s, "$2");
@@ -29,7 +29,7 @@ export async function resolveExportDestination(path: string, cwd: string, sugges
 }
 
 /** Explicit export only; exclusive creation refuses overwrite and existing symlinks. */
-export async function saveExport(path: string, records: readonly FlightRecord[], meta: ExportMetadata, createDefaultDirectory = false): Promise<void> {
+export async function saveExport(path: string, records: readonly BlackboxRecord[], meta: ExportMetadata, createDefaultDirectory = false): Promise<void> {
   if (createDefaultDirectory) {
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   }

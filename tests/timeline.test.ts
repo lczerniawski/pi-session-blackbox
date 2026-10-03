@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildTimeline, cleanText, clipped, exportMarkdown, filterTimeline, isTestCommand, MARKER_TYPE, parseQuery, timeLabel } from "../recorder.ts";
+import { buildTimeline, cleanText, clipped, exportMarkdown, filterTimeline, isTestCommand, MARKER_TYPE, parseQuery, timeLabel } from "../timeline.ts";
 import { defaultExportPath, resolveExportDestination, resolveExportPath, saveExport } from "../export.ts";
 
 const stamp = "2026-06-01T12:00:00.000Z";
@@ -30,6 +30,18 @@ test("reconstructs prompts, assistant text, edits, test commands, failures, and 
   assert.equal(records[3].failed, true);
   assert.equal(records[4].entryId, "marker");
   assert.ok(!JSON.stringify(records).includes("WRITE_PAYLOAD_SECRET"));
+});
+
+test("only the Blackbox marker ID reconstructs explicit decisions without changing session entries", () => {
+  assert.equal(MARKER_TYPE, "session-blackbox.marker.v1");
+  const entries = [
+    { type: "custom", id: "other", timestamp: stamp, customType: "other-extension.marker.v1", data: { text: "Not a Blackbox decision" } },
+    { type: "custom", id: "blackbox", timestamp: stamp, customType: MARKER_TYPE, data: { text: "Use SQLite" } },
+  ];
+  const original = structuredClone(entries);
+  const records = buildTimeline(entries);
+  assert.deepEqual(records.map(({ entryId, kind }) => ({ entryId, kind })), [{ entryId: "blackbox", kind: "decision" }]);
+  assert.deepEqual(entries, original);
 });
 
 test("does not extract decisions from assistant prose or expose thinking/images", () => {
@@ -129,7 +141,7 @@ test("Markdown safely fences embedded Markdown and documents sensitive exports",
 });
 
 test("exports are private, refuse overwrite/symlinks, and do not create custom parents", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pi-flight-"));
+  const dir = await mkdtemp(join(tmpdir(), "pi-blackbox-"));
   try {
     const path = join(dir, "timeline.md");
     await saveExport(path, [], meta);
@@ -146,7 +158,7 @@ test("exports are private, refuse overwrite/symlinks, and do not create custom p
 });
 
 test("destinations accept existing folders or files without creating custom directories", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pi-flight-destinations-"));
+  const dir = await mkdtemp(join(tmpdir(), "pi-blackbox-destinations-"));
   const suggested = "/default/generated.md";
   try {
     await mkdir(join(dir, "archive folder"));

@@ -1,7 +1,7 @@
 import type { KeybindingsManager, Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { getSelectListTheme } from "@earendil-works/pi-coding-agent";
 import { Input, SelectList, matchesKey, truncateToWidth, type Component, type Focusable, type TUI, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
-import { filterTimeline, parseQuery, timeLabel, type FlightRecord, type RecordKind } from "./recorder.ts";
+import { filterTimeline, parseQuery, timeLabel, type BlackboxRecord, type RecordKind } from "./timeline.ts";
 import { renderRecordDetails } from "./details.ts";
 import { languageCatalog, languageCatalogError } from "./languages.ts";
 
@@ -24,25 +24,25 @@ const CATEGORY_COLORS: Record<RecordKind, ThemeColor> = {
   branch: "syntaxKeyword",
 };
 
-export type BrowserResult = { exportRecords: FlightRecord[] } | undefined;
+export type BrowserResult = { exportRecords: BlackboxRecord[] } | undefined;
 
 export class TimelineBrowser implements Component, Focusable {
   private input = new Input({ prompt: "Search: ", placeholder: "words · kind:test · status:failed" });
   private list!: SelectList;
-  private filtered: FlightRecord[] = [];
-  private details?: FlightRecord;
+  private filtered: BlackboxRecord[] = [];
+  private details?: BlackboxRecord;
   private scroll = 0;
   private focusedValue = false;
   private listHeight = 0;
   private detailLineCount = 0;
   private detailHeight = 1;
-  private detailCache?: { record: FlightRecord; width: number; lines: string[] };
+  private detailCache?: { record: BlackboxRecord; width: number; lines: string[] };
   private languageOverrides = new Map<string, string>();
   private languageInput = new Input({ prompt: "Language: ", placeholder: "name or alias (e.g. python, rust, yaml)" });
   private languageList?: SelectList;
   private languageListHeight = 0;
 
-  constructor(private records: FlightRecord[], private tui: TUI, private theme: Theme,
+  constructor(private records: BlackboxRecord[], private tui: TUI, private theme: Theme,
     private keys: KeybindingsManager, private done: (result: BrowserResult) => void, query = "") {
     this.input.setValue(query);
     this.rebuild();
@@ -61,7 +61,8 @@ export class TimelineBrowser implements Component, Focusable {
   private rebuild(preserve = false): void {
     const previous = preserve ? this.list?.getSelectedItem()?.value : undefined;
     this.filtered = filterTimeline(this.records, parseQuery(this.input.getValue())).reverse();
-    this.listHeight = Math.max(1, Math.min(10, this.tui.terminal.rows - 11));
+    // Reserve eight header/footer rows and one SelectList scroll-indicator row.
+    this.listHeight = Math.max(1, this.tui.terminal.rows - 9);
     const recordsById = new Map(this.filtered.map((record) => [record.id, record]));
     this.list = new SelectList(this.filtered.map((record) => ({
       value: record.id,
@@ -91,9 +92,10 @@ export class TimelineBrowser implements Component, Focusable {
     ].filter((item) => `${item.value} ${item.label} ${item.description ?? ""}`.toLowerCase().includes(query));
     const rank = (item: (typeof choices)[number]) => item.value.toLowerCase() === query ? 3
       : item.label.toLowerCase() === query ? 2
-      : (item.description ?? "").split(/,\s*/).some((name) => name.toLowerCase() === query) ? 1 : 0;
+        : (item.description ?? "").split(/,\s*/).some((name) => name.toLowerCase() === query) ? 1 : 0;
     choices.sort((a, b) => rank(b) - rank(a));
-    this.languageListHeight = Math.max(1, Math.min(12, this.tui.terminal.rows - 7));
+    // The picker has seven header/footer rows, plus the scroll indicator.
+    this.languageListHeight = Math.max(1, this.tui.terminal.rows - 8);
     this.languageList = new SelectList(choices, this.languageListHeight, getSelectListTheme());
     this.languageList.onSelect = (item) => {
       if (this.details) {
@@ -113,11 +115,11 @@ export class TimelineBrowser implements Component, Focusable {
     this.languageInput.focused = this.focusedValue;
   }
 
-  private recordColor(record: FlightRecord): ThemeColor {
+  private recordColor(record: BlackboxRecord): ThemeColor {
     return record.failed ? "error" : CATEGORY_COLORS[record.kind];
   }
 
-  private rowLabel(record: FlightRecord): string {
+  private rowLabel(record: BlackboxRecord): string {
     const color = this.recordColor(record);
     const status = record.failed ? this.theme.fg("error", this.theme.bold("!")) : this.theme.fg(color, "·");
     return `${this.theme.fg("dim", timeLabel(record.timestamp))} ${status} ${this.theme.fg(color, record.kind.padEnd(10))} ${this.theme.fg(record.failed ? "error" : "text", record.title)}`;
@@ -133,9 +135,20 @@ export class TimelineBrowser implements Component, Focusable {
 
   handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
     if (this.languageList && event.type === "wheel") return { handled: true, render: false };
-    if (!this.details || event.type !== "wheel" || !event.wheelDelta || !Number.isFinite(event.wheelDelta)) return undefined;
+    if (event.type !== "wheel" || !event.wheelDelta || !Number.isFinite(event.wheelDelta)) return undefined;
     // Pi has already converted wheel/trackpad input into logical lines, including acceleration.
-    const changed = this.scrollTo(this.scroll + event.wheelDelta);
+    let changed = false;
+    if (this.details) {
+      changed = this.scrollTo(this.scroll + event.wheelDelta);
+    } else {
+      const selected = this.list.getSelectedItem();
+      const index = this.filtered.findIndex((record) => record.id === selected?.value);
+      if (index >= 0) {
+        const next = Math.max(0, Math.min(this.filtered.length - 1, Math.trunc(index + event.wheelDelta)));
+        changed = next !== index;
+        if (changed) this.list.setSelectedIndex(next);
+      }
+    }
     if (changed) this.tui.requestRender();
     // Consume wheel events even at the bounds so they never scroll the transcript behind the reader.
     return { handled: true, render: changed };
@@ -190,14 +203,14 @@ export class TimelineBrowser implements Component, Focusable {
     const height = Math.max(1, this.tui.terminal.rows);
     let lines: string[];
     if (this.languageList) {
-      if (this.languageListHeight !== Math.max(1, Math.min(12, this.tui.terminal.rows - 7))) this.rebuildLanguages();
+      if (this.languageListHeight !== Math.max(1, height - 8)) this.rebuildLanguages();
       lines = [this.theme.fg("accent", this.theme.bold(languageCatalogError() ? "Choose language · catalog unavailable" : `Choose language · ${languageCatalog().length} installed grammars`)),
-        this.theme.fg("dim", "This record only · display-only override · no automatic guessing"),
-        ...this.languageInput.render(w), "", ...this.languageList!.render(w), "",
-        this.theme.fg(languageCatalogError() ? "warning" : "dim", languageCatalogError()
-          ? "Full grammar catalog unavailable in this Pi installation. Automatic hints remain available."
-          : "Commands stay Bash; Markdown renders formatting; Plain text shows source."),
-        this.theme.fg("dim", "Type name/alias · ↑↓ select · Enter apply · Esc cancel")];
+      this.theme.fg("dim", "This record only · display-only override · no automatic guessing"),
+      ...this.languageInput.render(w), "", ...this.languageList!.render(w), "",
+      this.theme.fg(languageCatalogError() ? "warning" : "dim", languageCatalogError()
+        ? "Full grammar catalog unavailable in this Pi installation. Automatic hints remain available."
+        : "Commands stay Bash; Markdown renders formatting; Plain text shows source."),
+      this.theme.fg("dim", "Type name/alias · ↑↓ select · Enter apply · Esc cancel")];
     } else if (this.details) {
       const record = this.details;
       if (this.detailCache?.record !== record || this.detailCache.width !== w) {
@@ -208,17 +221,17 @@ export class TimelineBrowser implements Component, Focusable {
       this.detailLineCount = wrapped.length;
       this.scroll = Math.min(this.scroll, Math.max(0, wrapped.length - this.detailHeight));
       lines = [this.theme.fg(this.recordColor(record), `${record.kind} · ${record.timestamp} · entry ${record.entryId}`), "",
-        ...wrapped.slice(this.scroll, this.scroll + this.detailHeight), "",
-        this.theme.fg("dim", `${this.tui.mode === "fullscreen" ? "Wheel / " : ""}↑↓/PgUp/PgDn · Home/End · Ctrl+L language · Esc back · Ctrl+X export · ${this.scroll + 1}/${wrapped.length}`)];
+      ...wrapped.slice(this.scroll, this.scroll + this.detailHeight), "",
+      this.theme.fg("dim", `${this.tui.mode === "fullscreen" ? "Wheel / " : ""}↑↓/PgUp/PgDn · Home/End · Ctrl+L language · Esc back · Ctrl+X export · ${this.scroll + 1}/${wrapped.length}`)];
     } else {
-      if (this.listHeight !== Math.max(1, Math.min(10, this.tui.terminal.rows - 11))) this.rebuild(true);
+      if (this.listHeight !== Math.max(1, height - 9)) this.rebuild(true);
       const selected = this.filtered.find((record) => record.id === this.list.getSelectedItem()?.value);
       lines = [this.theme.fg("accent", this.theme.bold(`Blackbox · ${this.filtered.length}/${this.records.length} records`)),
-        this.theme.fg("dim", "Active branch · newest first · no extra model calls"),
-        ...this.input.render(w), "", ...this.list.render(w), "",
-        this.theme.fg("muted", selected ? truncateToWidth(selected.detail.replace(/\s+/g, " "), w) : "No matching records."),
-        this.theme.fg("dim", "Type to search · ↑↓ select · Enter details · Esc close · Ctrl+X export"),
-        this.theme.fg("dim", "Start filtered: /blackbox kind:test status:failed · /blackbox help")];
+      this.theme.fg("dim", "Active branch · newest first · no extra model calls"),
+      ...this.input.render(w), "", ...this.list.render(w), "",
+      this.theme.fg("muted", selected ? truncateToWidth(selected.detail.replace(/\s+/g, " "), w) : "No matching records."),
+      this.theme.fg("dim", `Type to search · ${this.tui.mode === "fullscreen" ? "Wheel / " : ""}↑↓ select · Enter details · Esc close · Ctrl+X export`),
+      this.theme.fg("dim", "Start filtered: /blackbox kind:test status:failed · /blackbox help")];
     }
     // maxHeight only caps an overlay; it does not fill unused rows. Cover the whole viewport
     // (including short/empty views) so the transcript cannot show above or below the reader.

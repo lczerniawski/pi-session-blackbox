@@ -1,6 +1,6 @@
 {
   "name": "pi-session-blackbox",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Search, inspect, and export the active Pi session branch",
   "license": "MIT",
   "type": "module",
@@ -20,7 +20,7 @@
     "browser.ts",
     "details.ts",
     "languages.ts",
-    "recorder.ts",
+    "timeline.ts",
     "export.ts",
     "README.md",
     "LICENSE"

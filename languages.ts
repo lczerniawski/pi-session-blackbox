@@ -46,9 +46,9 @@ export function languageFromPath(path: string): string | undefined {
   const file = path.replace(/\\/g, "/").split("/").at(-1)?.toLowerCase() ?? "";
   const special = /^dockerfile(?:\..+)?$/.test(file) ? "dockerfile"
     : /^(?:gnumakefile|makefile)(?:\..+)?$/.test(file) ? "makefile"
-    : file === "cmakelists.txt" ? "cmake"
-    : /^(?:\.(?:bashrc|zshrc|profile|bash_profile))$/.test(file) ? "bash"
-    : /^(?:\.(?:gitconfig|editorconfig|npmrc|env))(?:\..+)?$/.test(file) ? "ini" : undefined;
+      : file === "cmakelists.txt" ? "cmake"
+        : /^(?:\.(?:bashrc|zshrc|profile|bash_profile))$/.test(file) ? "bash"
+          : /^(?:\.(?:gitconfig|editorconfig|npmrc|env))(?:\..+)?$/.test(file) ? "ini" : undefined;
   const extra: Record<string, string> = {
     cts: "typescript", mts: "typescript", jsonc: "json", vue: "xml", svelte: "xml",
     hxx: "cpp", hh: "cpp", ipp: "cpp", cc: "cpp", cxx: "cpp",
@@ -68,10 +68,10 @@ export function interpreterLanguage(executable: string): string | undefined {
   const name = executable.replace(/.*[\\/]/, "");
   const interpreter = /^python(?:\d+(?:\.\d+)*)?$/.test(name) ? "python"
     : /^(?:node|nodejs)$/.test(name) ? "javascript"
-    : /^(?:bash|sh|zsh)$/.test(name) ? "bash"
-    : /^(?:pwsh|powershell)$/.test(name) ? "powershell"
-    : /^(?:R|Rscript)$/.test(name) ? "r"
-    : ["ruby", "perl", "php", "lua", "julia", "groovy", "elixir", "swift"].includes(name) ? name : undefined;
+      : /^(?:bash|sh|zsh)$/.test(name) ? "bash"
+        : /^(?:pwsh|powershell)$/.test(name) ? "powershell"
+          : /^(?:R|Rscript)$/.test(name) ? "r"
+            : ["ruby", "perl", "php", "lua", "julia", "groovy", "elixir", "swift"].includes(name) ? name : undefined;
   return interpreter ? resolveLanguage(interpreter) ?? interpreter : undefined;
 }
 

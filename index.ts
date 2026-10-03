@@ -3,7 +3,7 @@ import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-c
 import { Text } from "@earendil-works/pi-tui";
 import { TimelineBrowser, type BrowserResult } from "./browser.ts";
 import { defaultExportPath, resolveExportDestination, saveExport } from "./export.ts";
-import { buildTimeline, cleanText, clipped, filterTimeline, KINDS, MARKER_TYPE, parseQuery, timeLabel, type FlightRecord } from "./recorder.ts";
+import { buildTimeline, cleanText, clipped, filterTimeline, KINDS, MARKER_TYPE, parseQuery, timeLabel, type BlackboxRecord } from "./timeline.ts";
 
 const HELP = `Blackbox — searchable session history
 Usage: /blackbox [search words] [kind:<category>] [status:failed]
@@ -37,7 +37,7 @@ Ctrl+L opens a searchable language picker: all installed grammars, Automatic, or
 Markdown files render headings, lists, quotes, links, tables, and highlighted code blocks.
 Choose Markdown for unrecognized Markdown output; Plain text shows the literal source.
 Overrides affect only this record's display while the browser is open; commands stay Bash.
-Mouse wheel / trackpad scroll details in fullscreen mode; regular mode uses terminal scrollback.
+Mouse wheel / trackpad scroll the action list and details in fullscreen mode; regular mode uses terminal scrollback.
 Syntax-highlighted code and separate command/output sections. Ctrl+X exports matching records.
 Export offers the default folder first, or another existing folder/file, then asks for confirmation.
 Default: ~/.pi/agent/exports/blackbox (respects PI_CODING_AGENT_DIR); never overwrite.
@@ -74,7 +74,7 @@ export default function blackbox(pi: ExtensionAPI): void {
     return new Text(`${theme.fg("accent", "[decision]")} ${clipped(text)}`, 0, 0);
   });
 
-  async function exportRecords(ctx: ExtensionCommandContext, records: FlightRecord[], requestedPath = ""): Promise<void> {
+  async function exportRecords(ctx: ExtensionCommandContext, records: BlackboxRecord[], requestedPath = ""): Promise<void> {
     if (!ctx.hasUI) {
       ctx.ui.notify("Blackbox exports require interactive or RPC confirmation.", "warning");
       return;
@@ -138,7 +138,7 @@ export default function blackbox(pi: ExtensionAPI): void {
           const matches = filterTimeline(records, parseQuery(query));
           const last = matches.slice(-30);
           ctx.ui.notify([`Blackbox: ${matches.length}/${records.length} records (last ${last.length}, chronological)`,
-            ...last.map((record) => `${timeLabel(record.timestamp)} [${record.kind}${record.failed ? ":failed" : ""}] ${record.title}`),
+          ...last.map((record) => `${timeLabel(record.timestamp)} [${record.kind}${record.failed ? ":failed" : ""}] ${record.title}`),
             "Use /blackbox export for details; the interactive browser requires TUI mode."].join("\n"), "info");
           return;
         }

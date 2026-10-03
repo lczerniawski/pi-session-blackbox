@@ -27,7 +27,7 @@ function context(cwd, mode = "tui") {
       select: async (_title, options) => options[0], input: async () => undefined, confirm: async () => true } };
 }
 async function workspace(check) {
-  const dir = await mkdtemp(join(tmpdir(), "pi-flight-export-ui-"));
+  const dir = await mkdtemp(join(tmpdir(), "pi-blackbox-export-ui-"));
   const original = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = join(dir, "agent");
   try { await check(dir); }
