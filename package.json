@@ -1,7 +1,13 @@
 {
   "name": "pi-session-blackbox",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Search, inspect, and export the active Pi session branch",
+  "homepage": "https://github.com/lczerniawski/pi-session-blackbox#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lczerniawski/pi-session-blackbox.git"
+  },
+  "author": "Łukasz Czerniawski",
   "license": "MIT",
   "type": "module",
   "keywords": ["pi-package", "pi-extension", "session-history", "timeline"],
